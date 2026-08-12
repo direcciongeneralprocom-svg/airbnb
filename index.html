@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador de Layouts de Pago</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --primary: #1a56db;
+      --primary-dark: #1341b0;
+      --inntec: #047857;
+      --inntec-light: #d1fae5;
+      --banks: #7c3aed;
+      --banks-light: #ede9fe;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-500: #6b7280;
+      --gray-700: #374151;
+      --gray-900: #111827;
+      --error: #dc2626;
+      --error-light: #fee2e2;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .header { text-align: center; margin-bottom: 40px; }
+    .header h1 { font-size: 28px; font-weight: 700; color: var(--gray-900); }
+    .header p  { margin-top: 8px; color: var(--gray-500); font-size: 15px; }
+
+    /* ── Upload area ── */
+    .upload-card {
+      background: white;
+      border: 2px dashed var(--gray-200);
+      border-radius: var(--radius);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .upload-card:hover, .upload-card.drag-over {
+      border-color: var(--primary);
+      background: #eff6ff;
+    }
+    .upload-card input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-icon { font-size: 48px; margin-bottom: 12px; }
+    .upload-card h2 { font-size: 18px; font-weight: 600; color: var(--gray-700); }
+    .upload-card p  { margin-top: 6px; color: var(--gray-500); font-size: 14px; }
+    .upload-hint {
+      margin-top: 16px;
+      display: inline-block;
+      background: var(--gray-100);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--gray-500);
+    }
+
+    /* ── Config panel ── */
+    .config-card {
+      background: white;
+      border-radius: var(--radius);
+      border: 1px solid var(--gray-200);
+      padding: 24px;
+      margin-top: 20px;
+    }
+    .config-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--gray-700); }
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .field label { display: block; font-size: 13px; font-weight: 500; color: var(--gray-700); margin-bottom: 6px; }
+    .field input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--gray-900);
+      transition: border-color 0.15s;
+    }
+    .field input:focus { outline: none; border-color: var(--primary); }
+
+    /* ── Results ── */
+    .results { margin-top: 24px; display: none; }
+    .results.visible { display: block; }
+
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+    .summary-card {
+      border-radius: var(--radius);
+      padding: 20px;
+      border: 1px solid transparent;
+    }
+    .summary-card.inntec { background: var(--inntec-light); border-color: #6ee7b7; }
+    .summary-card.banks  { background: var(--banks-light);  border-color: #c4b5fd; }
+
+    .summary-card .label { font-size: 13px; font-weight: 500; }
+    .summary-card.inntec .label { color: var(--inntec); }
+    .summary-card.banks  .label { color: var(--banks); }
+    .summary-card .count { font-size: 32px; font-weight: 700; margin: 4px 0; }
+    .summary-card .total { font-size: 14px; font-weight: 600; }
+
+    /* ── Table preview ── */
+    .table-section { background: white; border-radius: var(--radius); border: 1px solid var(--gray-200); overflow: hidden; margin-bottom: 16px; }
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--gray-100);
+    }
+    .table-header h4 { font-size: 14px; font-weight: 600; }
+    .table-header .badge {
+      font-size: 12px; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px;
+    }
+    .badge.inntec { background: var(--inntec-light); color: var(--inntec); }
+    .badge.banks  { background: var(--banks-light);  color: var(--banks); }
+
+    .table-wrap { overflow-x: auto; max-height: 280px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      position: sticky; top: 0;
+      background: var(--gray-50);
+      padding: 10px 16px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--gray-500);
+      border-bottom: 1px solid var(--gray-200);
+      white-space: nowrap;
+    }
+    td { padding: 9px 16px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--gray-50); }
+    .amount { font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; }
+    .clabe  { font-family: 'Courier New', monospace; font-size: 12px; }
+
+    /* ── Buttons ── */
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 4px; }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px 20px;
+      border: none; border-radius: var(--radius);
+      font-size: 15px; font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-inntec { background: var(--inntec); color: white; }
+    .btn-inntec:hover { background: #065f46; }
+    .btn-banks  { background: var(--banks);  color: white; }
+    .btn-banks:hover  { background: #6d28d9; }
+    .btn-icon { font-size: 18px; }
+
+    /* ── Error ── */
+    .error-msg {
+      background: var(--error-light);
+      border: 1px solid #fca5a5;
+      color: var(--error);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-top: 16px;
+      font-size: 14px;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    /* ── Grouped notice ── */
+    .notice {
+      background: #fffbeb; border: 1px solid #fcd34d;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 13px; color: #92400e;
+      margin: 0 20px 12px;
+    }
+
+    @media (max-width: 600px) {
+      .summary-grid, .config-grid, .btn-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>💳 Generador de Layouts de Pago</h1>
+    <p>Sube tu Excel y genera automáticamente el layout para INNTEC y bancos tradicionales</p>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-card" id="uploadCard">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <div class="upload-icon">📂</div>
+    <h2>Arrastra tu Excel aquí</h2>
+    <p>o haz clic para seleccionar el archivo</p>
+    <span class="upload-hint">📋 Formato esperado: NOMBRE · MONTO FINAL · CLABE · BANCO</span>
+  </div>
+
+  <!-- Config -->
+  <div class="config-card">
+    <h3>⚙️ Configuración del Layout (Bancos)</h3>
+    <div class="config-grid">
+      <div class="field">
+        <label for="fechaElab">Fecha Elaboración</label>
+        <input type="date" id="fechaElab" />
+      </div>
+      <div class="field">
+        <label for="fechaPago">Fecha Pago</label>
+        <input type="date" id="fechaPago" />
+      </div>
+      <div class="field">
+        <label for="referencia">Referencia (opcional)</label>
+        <input type="text" id="referencia" placeholder="Ej. IRC-09-26-01" />
+      </div>
+      <div class="field">
+        <label for="concepto">Concepto (opcional)</label>
+        <input type="text" id="concepto" placeholder="Ej. Pago nómina" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+
+    <!-- Summary cards -->
+    <div class="summary-grid">
+      <div class="summary-card inntec">
+        <div class="label">🟢 INNTEC (agrupado por CLABE)</div>
+        <div class="count" id="inntecCount">0</div>
+        <div class="total" id="inntecTotal">$0.00</div>
+      </div>
+      <div class="summary-card banks">
+        <div class="label">🏦 Bancos tradicionales</div>
+        <div class="count" id="banksCount">0</div>
+        <div class="total" id="banksTotal">$0.00</div>
+      </div>
+    </div>
+
+    <!-- INNTEC preview -->
+    <div class="table-section">
+      <div class="table-header">
+        <h4>INNTEC — Tarjetas agrupadas</h4>
+        <span class="badge inntec" id="inntecBadge">0 registros</span>
+      </div>
+      <div id="inntecNotice"></div>
+      <div class="table-wrap">
+        <table id="inntecTable">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Monto</th>
+              <th>CLABE / Tarjeta</th>
+              <th>Banco</th>
+            </tr>
+          </thead>
+          <tbody id="inntecBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Banks preview -->
+    <div class="table-section">
+      <div class="table-header">
+        <h4>Bancos Tradicionales</h4>
+        <span class="badge banks" id="banksBadge">0 registros</span>
+      </div>
+      <div class="table-wrap">
+        <table id="banksTable">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Monto</th>
+              <th>CLABE</th>
+              <th>Clave Banco</th>
+            </tr>
+          </thead>
+          <tbody id="banksBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Download buttons -->
+    <div class="btn-row">
+      <button class="btn btn-inntec" id="btnInntec">
+        <span class="btn-icon">⬇️</span> Descargar Layout INNTEC (.xlsx)
+      </button>
+      <button class="btn btn-banks" id="btnBanks">
+        <span class="btn-icon">⬇️</span> Descargar Layout Bancos (.csv)
+      </button>
+    </div>
+
+  </div><!-- /results -->
+
+</div><!-- /container -->
+
+<script>
+// ─────────────────────────────────────────────
+//  Utilidades
+// ─────────────────────────────────────────────
+
+function cleanClabe(val) {
+  if (val == null) return '';
+  let s = String(val).trim();
+  // remove "CLABE " / "CLABE´" prefix variations
+  s = s.replace(/^CLABE\s*[´`']?\s*/i, '');
+  // remove leading apostrophe Excel trick
+  s = s.replace(/^[`'´]/, '');
+  // keep only digits
+  s = s.replace(/[^\d]/g, '');
+  return s;
+}
+
+function cleanAmount(val) {
+  if (val == null) return 0;
+  if (typeof val === 'number') return val;
+  let s = String(val).replace(/[$,\s]/g, '');
+  return parseFloat(s) || 0;
+}
+
+function fmtMXN(n) {
+  return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+// DD/MM/YYYY from YYYY-MM-DD
+function toDMY(iso) {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// Extract bank code (first 3 digits of CLABE)
+function bankCode(clabe) {
+  return clabe.substring(0, 3) || '000';
+}
+
+// CSV escaping
+function csvCell(val) {
+  const s = String(val == null ? '' : val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function csvRow(arr) {
+  return arr.map(csvCell).join(',');
+}
+
+// ─────────────────────────────────────────────
+//  Lectura del Excel
+// ─────────────────────────────────────────────
+
+let inntecData = [];
+let banksData  = [];
+let mergedCount = 0; // how many INNTEC rows were merged
+
+function parseExcel(ab) {
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+
+  // Find the sheet that has NOMBRE / CLABE / BANCO
+  let ws = null;
+  let sheetName = '';
+  for (const name of wb.SheetNames) {
+    const s = wb.Sheets[name];
+    const json = XLSX.utils.sheet_to_json(s, { header: 1, defval: null });
+    // Look for header row
+    for (const row of json.slice(0, 10)) {
+      const strs = row.map(c => String(c || '').toUpperCase());
+      if (strs.some(c => c.includes('NOMBRE')) && strs.some(c => c.includes('CLABE'))) {
+        ws = s;
+        sheetName = name;
+        break;
+      }
+    }
+    if (ws) break;
+  }
+
+  if (!ws) throw new Error('No se encontró una hoja con columnas NOMBRE, CLABE y BANCO. Asegúrate de que el Excel tenga el formato correcto.');
+
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  // Detect header row
+  let headerIdx = -1;
+  let colNombre = -1, colMonto = -1, colClabe = -1, colBanco = -1;
+
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const row = rows[i];
+    const upper = row.map(c => String(c || '').toUpperCase().trim());
+    const ni = upper.findIndex(c => c === 'NOMBRE' || c === 'NOMBRE STAFF' || c === 'PERSONA');
+    const mi = upper.findIndex(c => c.includes('MONTO') || c.includes('IMPORTE'));
+    const ci = upper.findIndex(c => c === 'CLABE');
+    const bi = upper.findIndex(c => c === 'BANCO');
+    if (ni >= 0 && ci >= 0) {
+      headerIdx = i;
+      colNombre = ni;
+      colMonto  = mi >= 0 ? mi : -1;
+      colClabe  = ci;
+      colBanco  = bi;
+      break;
+    }
+  }
+
+  if (headerIdx < 0) throw new Error('No se encontró fila de encabezados con NOMBRE y CLABE.');
+
+  const rawInntec = {};
+  const rawBanks  = {};
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every(c => c == null)) continue;
+
+    const nombre = String(row[colNombre] || '').trim();
+    const monto  = colMonto >= 0 ? cleanAmount(row[colMonto]) : 0;
+    const clabeRaw = row[colClabe];
+    const banco   = String(row[colBanco] == null ? '' : row[colBanco]).trim();
+
+    if (!nombre || !clabeRaw) continue;
+
+    const clabe = cleanClabe(clabeRaw);
+    if (!clabe) continue;
+
+    const isInntec = banco.toUpperCase() === 'INNTEC';
+
+    if (isInntec) {
+      // Group by CLABE
+      if (rawInntec[clabe]) {
+        rawInntec[clabe].monto += monto;
+        mergedCount++;
+      } else {
+        rawInntec[clabe] = { nombre, clabe, monto, banco: 'INNTEC' };
+      }
+    } else {
+      // Also group traditional banks by CLABE
+      if (rawBanks[clabe]) {
+        rawBanks[clabe].monto += monto;
+        mergedCount++;
+      } else {
+        rawBanks[clabe] = { nombre, clabe, monto, banco };
+      }
+    }
+  }
+
+  inntecData = Object.values(rawInntec).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  banksData  = Object.values(rawBanks).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+// ─────────────────────────────────────────────
+//  Render de previews
+// ─────────────────────────────────────────────
+
+function renderPreviews() {
+  // Totals
+  const inntecTotal = inntecData.reduce((s, r) => s + r.monto, 0);
+  const banksTotal  = banksData.reduce((s, r) => s + r.monto, 0);
+
+  document.getElementById('inntecCount').textContent = inntecData.length;
+  document.getElementById('banksCount').textContent  = banksData.length;
+  document.getElementById('inntecTotal').textContent = fmtMXN(inntecTotal);
+  document.getElementById('banksTotal').textContent  = fmtMXN(banksTotal);
+  document.getElementById('inntecBadge').textContent = inntecData.length + ' registros';
+  document.getElementById('banksBadge').textContent  = banksData.length  + ' registros';
+
+  // Merged notice
+  const noticeEl = document.getElementById('inntecNotice');
+  if (mergedCount > 0) {
+    noticeEl.innerHTML = `<div class="notice">⚡ Se agruparon ${mergedCount} pago(s) con CLABE duplicada (INNTEC y Bancos) — los montos ya están consolidados.</div>`;
+  } else {
+    noticeEl.innerHTML = '';
+  }
+
+  // INNTEC table
+  const ib = document.getElementById('inntecBody');
+  ib.innerHTML = '';
+  for (const r of inntecData) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.nombre}</td>
+      <td class="amount">${fmtMXN(r.monto)}</td>
+      <td class="clabe">${r.clabe}</td>
+      <td><span class="badge inntec">INNTEC</span></td>`;
+    ib.appendChild(tr);
+  }
+
+  // Banks table
+  const bb = document.getElementById('banksBody');
+  bb.innerHTML = '';
+  for (const r of banksData) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.nombre}</td>
+      <td class="amount">${fmtMXN(r.monto)}</td>
+      <td class="clabe">${r.clabe}</td>
+      <td>${bankCode(r.clabe)}</td>`;
+    bb.appendChild(tr);
+  }
+
+  document.getElementById('results').classList.add('visible');
+}
+
+// ─────────────────────────────────────────────
+//  Generación INNTEC → XLSX
+// ─────────────────────────────────────────────
+
+function downloadInntec() {
+  const total = inntecData.reduce((s, r) => s + r.monto, 0);
+
+  // Build array-of-arrays
+  const aoa = [];
+
+  // Title row
+  aoa.push(['NOMBRE', 'MONTO', 'CLABE / TARJETA', 'BANCO']);
+
+  for (const r of inntecData) {
+    aoa.push([r.nombre, r.monto, r.clabe, 'INNTEC']);
+  }
+
+  // Blank separator
+  aoa.push(['', '', '', '']);
+  // Total row
+  aoa.push(['TOTAL', total, '', '']);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 40 }, // Nombre
+    { wch: 14 }, // Monto
+    { wch: 20 }, // CLABE
+    { wch: 10 }, // Banco
+  ];
+
+  // Format amount cells as currency (column B, rows 2..N)
+  const dataRows = inntecData.length;
+  for (let i = 1; i <= dataRows; i++) { // row index 1-based (0=header)
+    const cellRef = XLSX.utils.encode_cell({ r: i, c: 1 });
+    if (ws[cellRef]) {
+      ws[cellRef].z = '"$"#,##0.00';
+    }
+  }
+  // Total cell
+  const totalRow = dataRows + 2; // +1 header, +1 blank
+  const totalRef = XLSX.utils.encode_cell({ r: totalRow, c: 1 });
+  if (ws[totalRef]) {
+    ws[totalRef].z = '"$"#,##0.00';
+  }
+  // Make CLABE column text
+  for (let i = 1; i <= dataRows; i++) {
+    const cellRef = XLSX.utils.encode_cell({ r: i, c: 2 });
+    if (ws[cellRef]) {
+      ws[cellRef].t = 's'; // string
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'INNTEC');
+  XLSX.writeFile(wb, 'layout_INNTEC.xlsx');
+}
+
+// ─────────────────────────────────────────────
+//  Generación BANCOS → CSV (formato PEIBO)
+// ─────────────────────────────────────────────
+
+function downloadBanks() {
+  const fechaElab = document.getElementById('fechaElab').value || todayStr();
+  const fechaPago = document.getElementById('fechaPago').value || todayStr();
+  const ref       = document.getElementById('referencia').value.trim();
+  const concepto  = document.getElementById('concepto').value.trim();
+
+  const total = banksData.reduce((s, r) => s + r.monto, 0);
+
+  const HEADER = [
+    'Clave Programa Dispersión',
+    'Nombre Programa',
+    "Fecha Elab ('AAAA-MM-DD)",
+    "Fecha Pago ('AAAA-MM-DD)",
+    'Uso Futuro',
+    'Uso Futuro',
+    'Importe Total del Programa',
+    'Clave Beneficiario en Peibo (Usar "sin definir" para nuevos)',
+    'Nombre del Beneficiario',
+    'Clave Banco (Ver "Directorio de Bancos")',
+    "Clabe (TDD o Celular)(usar ' antes de la clabe)",
+    'tipo cuenta',
+    'importe',
+    'Correo Beneficiario',
+    'Referencia',
+    'Concepto',
+    'Grupo',
+    'Id Referencia Cliente',
+    'RFC/CURP',
+    'Celular',
+  ];
+
+  const rows = [];
+
+  // 1. Header
+  rows.push(csvRow(HEADER));
+
+  // 2. Program row
+  rows.push(csvRow([
+    'PAGO', 'PAGO',
+    toDMY(fechaElab), toDMY(fechaPago),
+    '', '',
+    fmtMXN(total),
+    '', '', '', '', '', '', '', '', '', '', '', '', ''
+  ]));
+
+  // 3. Beneficiary rows
+  for (const r of banksData) {
+    rows.push(csvRow([
+      'PAGO', '', '', '', '', '', '',
+      'SIN DEFINIR',
+      r.nombre,
+      bankCode(r.clabe),
+      r.clabe,
+      'CLABE',
+      fmtMXN(r.monto),
+      '',          // Correo
+      ref,         // Referencia
+      concepto,    // Concepto
+      '',          // Grupo
+      '',          // Id Referencia Cliente
+      '',          // RFC/CURP
+      '',          // Celular
+    ]));
+  }
+
+  // 4. Empty rows
+  rows.push(csvRow(Array(20).fill('')));
+  rows.push(csvRow(Array(20).fill('')));
+
+  // 5. Total rows
+  const totArr = Array(20).fill('');
+  totArr[12] = fmtMXN(total);
+  rows.push(csvRow(totArr));
+
+  const csv = rows.join('\r\n');
+  const bom = '﻿'; // UTF-8 BOM for Excel compatibility
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'layout_BANCOS.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────────────────────────
+//  Event wiring
+// ─────────────────────────────────────────────
+
+// Set default dates
+document.getElementById('fechaElab').value = todayStr();
+document.getElementById('fechaPago').value = todayStr();
+
+function handleFile(file) {
+  if (!file) return;
+  const errEl = document.getElementById('errorMsg');
+  errEl.classList.remove('visible');
+  document.getElementById('results').classList.remove('visible');
+  inntecData = []; banksData = []; mergedCount = 0;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      parseExcel(new Uint8Array(e.target.result));
+      renderPreviews();
+    } catch (err) {
+      errEl.textContent = '❌ ' + err.message;
+      errEl.classList.add('visible');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// File input
+document.getElementById('fileInput').addEventListener('change', e => {
+  handleFile(e.target.files[0]);
+});
+
+// Drag & drop
+const card = document.getElementById('uploadCard');
+card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+card.addEventListener('dragleave', ()  => card.classList.remove('drag-over'));
+card.addEventListener('drop', e => {
+  e.preventDefault();
+  card.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// Download buttons
+document.getElementById('btnInntec').addEventListener('click', downloadInntec);
+document.getElementById('btnBanks').addEventListener('click',  downloadBanks);
+</script>
+</body>
+</html>
