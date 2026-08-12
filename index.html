@@ -216,6 +216,14 @@
     <h3>⚙️ Configuración del Layout (Bancos)</h3>
     <div class="config-grid">
       <div class="field">
+        <label for="clavePrograma">Clave de Programa <span style="color:#6b7280;font-weight:400">(llena columna A)</span></label>
+        <input type="text" id="clavePrograma" placeholder="Ej. PAGO" value="PAGO" />
+      </div>
+      <div class="field">
+        <label for="filtroNombre">Filtrar por nombre <span style="color:#6b7280;font-weight:400">(opcional)</span></label>
+        <input type="text" id="filtroNombre" placeholder="Ej. GETULIO" />
+      </div>
+      <div class="field">
         <label for="fechaElab">Fecha Elaboración</label>
         <input type="date" id="fechaElab" />
       </div>
@@ -296,6 +304,9 @@
         </table>
       </div>
     </div>
+
+    <!-- Filter notice -->
+    <div id="filterNotice" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:13px; color:#1e40af; margin-bottom:12px;"></div>
 
     <!-- Download buttons -->
     <div class="btn-row">
@@ -423,8 +434,9 @@ function parseExcel(ab) {
 
   if (headerIdx < 0) throw new Error('No se encontró fila de encabezados con NOMBRE y CLABE.');
 
-  const rawInntec = {};
-  const rawBanks  = {};
+  const rawInntec    = {};
+  const rawBanksMap  = {};   // clabe → entry (for grouping)
+  const rawBanksArr  = [];   // insertion-order list (preserves Excel order)
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -443,7 +455,7 @@ function parseExcel(ab) {
     const isInntec = banco.toUpperCase() === 'INNTEC';
 
     if (isInntec) {
-      // Group by CLABE
+      // Group INNTEC by CLABE (alphabetical order kept via sort below)
       if (rawInntec[clabe]) {
         rawInntec[clabe].monto += monto;
         mergedCount++;
@@ -451,18 +463,20 @@ function parseExcel(ab) {
         rawInntec[clabe] = { nombre, clabe, monto, banco: 'INNTEC' };
       }
     } else {
-      // Also group traditional banks by CLABE
-      if (rawBanks[clabe]) {
-        rawBanks[clabe].monto += monto;
+      // Group banks by CLABE but PRESERVE original Excel row order
+      if (rawBanksMap[clabe]) {
+        rawBanksMap[clabe].monto += monto;
         mergedCount++;
       } else {
-        rawBanks[clabe] = { nombre, clabe, monto, banco };
+        const entry = { nombre, clabe, monto, banco };
+        rawBanksMap[clabe] = entry;
+        rawBanksArr.push(entry);   // first-seen order = Excel order
       }
     }
   }
 
   inntecData = Object.values(rawInntec).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  banksData  = Object.values(rawBanks).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  banksData  = rawBanksArr;   // NO sort — keeps the order from the Excel
 }
 
 // ─────────────────────────────────────────────
@@ -516,6 +530,27 @@ function renderPreviews() {
   }
 
   document.getElementById('results').classList.add('visible');
+  updateFilterNotice();
+}
+
+// ─────────────────────────────────────────────
+//  Filtro por nombre
+// ─────────────────────────────────────────────
+
+function getFilteredData(data) {
+  const filtro = document.getElementById('filtroNombre').value.trim().toUpperCase();
+  if (!filtro) return data;
+  return data.filter(r => r.nombre.toUpperCase().includes(filtro));
+}
+
+function updateFilterNotice() {
+  const filtro  = document.getElementById('filtroNombre').value.trim();
+  const noticeEl = document.getElementById('filterNotice');
+  if (!filtro) { noticeEl.style.display = 'none'; return; }
+  const fi = getFilteredData(inntecData).length;
+  const fb = getFilteredData(banksData).length;
+  noticeEl.style.display = 'block';
+  noticeEl.textContent   = `🔍 Filtro activo: "${filtro}" — ${fi} registro(s) INNTEC · ${fb} registro(s) Bancos. Solo se incluirán estos en los archivos descargados.`;
 }
 
 // ─────────────────────────────────────────────
@@ -523,7 +558,9 @@ function renderPreviews() {
 // ─────────────────────────────────────────────
 
 function downloadInntec() {
-  const total = inntecData.reduce((s, r) => s + r.monto, 0);
+  const data  = getFilteredData(inntecData);
+  const filtro = document.getElementById('filtroNombre').value.trim();
+  const total = data.reduce((s, r) => s + r.monto, 0);
 
   // Build array-of-arrays
   const aoa = [];
@@ -531,7 +568,7 @@ function downloadInntec() {
   // Title row
   aoa.push(['NOMBRE', 'MONTO', 'CLABE / TARJETA', 'BANCO']);
 
-  for (const r of inntecData) {
+  for (const r of data) {
     aoa.push([r.nombre, r.monto, r.clabe, 'INNTEC']);
   }
 
@@ -551,7 +588,7 @@ function downloadInntec() {
   ];
 
   // Format amount cells as currency (column B, rows 2..N)
-  const dataRows = inntecData.length;
+  const dataRows = data.length;
   for (let i = 1; i <= dataRows; i++) { // row index 1-based (0=header)
     const cellRef = XLSX.utils.encode_cell({ r: i, c: 1 });
     if (ws[cellRef]) {
@@ -574,7 +611,8 @@ function downloadInntec() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'INNTEC');
-  XLSX.writeFile(wb, 'layout_INNTEC.xlsx');
+  const suffix = filtro ? `_${filtro.toUpperCase()}` : '';
+  XLSX.writeFile(wb, `layout_INNTEC${suffix}.xlsx`);
 }
 
 // ─────────────────────────────────────────────
@@ -582,12 +620,15 @@ function downloadInntec() {
 // ─────────────────────────────────────────────
 
 function downloadBanks() {
-  const fechaElab = document.getElementById('fechaElab').value || todayStr();
-  const fechaPago = document.getElementById('fechaPago').value || todayStr();
-  const ref       = document.getElementById('referencia').value.trim();
-  const concepto  = document.getElementById('concepto').value.trim();
+  const fechaElab     = document.getElementById('fechaElab').value || todayStr();
+  const fechaPago     = document.getElementById('fechaPago').value || todayStr();
+  const ref           = document.getElementById('referencia').value.trim();
+  const concepto      = document.getElementById('concepto').value.trim();
+  const clavePrograma = document.getElementById('clavePrograma').value.trim() || 'PAGO';
+  const filtro        = document.getElementById('filtroNombre').value.trim();
 
-  const total = banksData.reduce((s, r) => s + r.monto, 0);
+  const data  = getFilteredData(banksData);
+  const total = data.reduce((s, r) => s + r.monto, 0);
 
   const HEADER = [
     'Clave Programa Dispersión',
@@ -619,7 +660,7 @@ function downloadBanks() {
 
   // 2. Program row
   rows.push(csvRow([
-    'PAGO', 'PAGO',
+    clavePrograma, clavePrograma,
     toDMY(fechaElab), toDMY(fechaPago),
     '', '',
     fmtMXN(total),
@@ -627,9 +668,9 @@ function downloadBanks() {
   ]));
 
   // 3. Beneficiary rows
-  for (const r of banksData) {
+  for (const r of data) {
     rows.push(csvRow([
-      'PAGO', '', '', '', '', '', '',
+      clavePrograma, '', '', '', '', '', '',
       'SIN DEFINIR',
       r.nombre,
       bankCode(r.clabe),
@@ -661,7 +702,8 @@ function downloadBanks() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'layout_BANCOS.csv';
+  const suffix2 = filtro ? `_${filtro.toUpperCase()}` : '';
+  a.download = `layout_BANCOS${suffix2}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -714,6 +756,11 @@ card.addEventListener('drop', e => {
 // Download buttons
 document.getElementById('btnInntec').addEventListener('click', downloadInntec);
 document.getElementById('btnBanks').addEventListener('click',  downloadBanks);
+
+// Filter notice — updates live as user types
+document.getElementById('filtroNombre').addEventListener('input', () => {
+  if (inntecData.length > 0 || banksData.length > 0) updateFilterNotice();
+});
 </script>
 </body>
 </html>
