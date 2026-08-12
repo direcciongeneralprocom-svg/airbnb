@@ -13,6 +13,8 @@
       --inntec-light: #d1fae5;
       --banks: #7c3aed;
       --banks-light: #ede9fe;
+      --getulio: #b45309;
+      --getulio-light: #fef3c7;
       --gray-50: #f9fafb;
       --gray-100: #f3f4f6;
       --gray-200: #e5e7eb;
@@ -129,8 +131,9 @@
       font-size: 12px; font-weight: 600;
       padding: 3px 10px; border-radius: 20px;
     }
-    .badge.inntec { background: var(--inntec-light); color: var(--inntec); }
-    .badge.banks  { background: var(--banks-light);  color: var(--banks); }
+    .badge.inntec   { background: var(--inntec-light);   color: var(--inntec); }
+    .badge.banks    { background: var(--banks-light);    color: var(--banks); }
+    .badge.getulio  { background: var(--getulio-light);  color: var(--getulio); }
 
     .table-wrap { overflow-x: auto; max-height: 280px; overflow-y: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -161,10 +164,12 @@
       transition: transform 0.1s, box-shadow 0.1s;
     }
     .btn:active { transform: scale(0.98); }
-    .btn-inntec { background: var(--inntec); color: white; }
+    .btn-inntec   { background: var(--inntec);   color: white; }
     .btn-inntec:hover { background: #065f46; }
-    .btn-banks  { background: var(--banks);  color: white; }
+    .btn-banks    { background: var(--banks);    color: white; }
     .btn-banks:hover  { background: #6d28d9; }
+    .btn-getulio  { background: var(--getulio);  color: white; }
+    .btn-getulio:hover { background: #92400e; }
     .btn-icon { font-size: 18px; }
 
     /* ── Error ── */
@@ -260,6 +265,11 @@
         <div class="count" id="banksCount">0</div>
         <div class="total" id="banksTotal">$0.00</div>
       </div>
+      <div class="summary-card getulio" id="getuliSummaryCard" style="display:none; border-color:#fcd34d;">
+        <div class="label" style="color:var(--getulio)">🔶 Getulio A. Centanaro</div>
+        <div class="count" id="getulioCount">0</div>
+        <div class="total" id="getulioTotal">$0.00</div>
+      </div>
     </div>
 
     <!-- INNTEC preview -->
@@ -305,6 +315,27 @@
       </div>
     </div>
 
+    <!-- Getulio section (visible only when detected) -->
+    <div class="table-section" id="getulioSection" style="display:none;">
+      <div class="table-header">
+        <h4>🔶 Getulio Andres Centanaro Patiño</h4>
+        <span class="badge getulio" id="getulioBadge">0 registros</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Monto</th>
+              <th>CLABE</th>
+              <th>Clave Banco</th>
+            </tr>
+          </thead>
+          <tbody id="getulioBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Filter notice -->
     <div id="filterNotice" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:13px; color:#1e40af; margin-bottom:12px;"></div>
 
@@ -315,6 +346,12 @@
       </button>
       <button class="btn btn-banks" id="btnBanks">
         <span class="btn-icon">⬇️</span> Descargar Layout Bancos (.csv)
+      </button>
+    </div>
+    <!-- Getulio download (visible only when detected) -->
+    <div id="getulioDownloadRow" style="display:none; margin-top:14px;">
+      <button class="btn btn-getulio" id="btnGetulio" style="width:100%;">
+        <span class="btn-icon">⬇️</span> Descargar Layout Getulio (.xlsx)
       </button>
     </div>
 
@@ -382,9 +419,10 @@ function csvRow(arr) {
 //  Lectura del Excel
 // ─────────────────────────────────────────────
 
-let inntecData = [];
-let banksData  = [];
-let mergedCount = 0; // how many INNTEC rows were merged
+let inntecData      = [];
+let banksData       = [];
+let getulioBanksData = [];
+let mergedCount = 0; // how many rows were merged
 
 function parseExcel(ab) {
   const wb = XLSX.read(ab, { type: 'array', cellDates: true });
@@ -475,8 +513,9 @@ function parseExcel(ab) {
     }
   }
 
-  inntecData = Object.values(rawInntec).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  banksData  = rawBanksArr;   // NO sort — keeps the order from the Excel
+  inntecData       = Object.values(rawInntec).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  banksData        = rawBanksArr;   // NO sort — keeps the order from the Excel
+  getulioBanksData = banksData.filter(r => r.nombre.toUpperCase().includes('GETULIO'));
 }
 
 // ─────────────────────────────────────────────
@@ -527,6 +566,29 @@ function renderPreviews() {
       <td class="clabe">${r.clabe}</td>
       <td>${bankCode(r.clabe)}</td>`;
     bb.appendChild(tr);
+  }
+
+  // Getulio section — show only if detected
+  const getulioTotal = getulioBanksData.reduce((s, r) => s + r.monto, 0);
+  const hasGetulio   = getulioBanksData.length > 0;
+  document.getElementById('getulioSection').style.display      = hasGetulio ? '' : 'none';
+  document.getElementById('getulioDownloadRow').style.display  = hasGetulio ? '' : 'none';
+  document.getElementById('getuliSummaryCard').style.display   = hasGetulio ? '' : 'none';
+  if (hasGetulio) {
+    document.getElementById('getulioCount').textContent = getulioBanksData.length;
+    document.getElementById('getulioTotal').textContent = fmtMXN(getulioTotal);
+    document.getElementById('getulioBadge').textContent = getulioBanksData.length + ' registro(s)';
+    const gb = document.getElementById('getulioBody');
+    gb.innerHTML = '';
+    for (const r of getulioBanksData) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.nombre}</td>
+        <td class="amount">${fmtMXN(r.monto)}</td>
+        <td class="clabe">${r.clabe}</td>
+        <td>${bankCode(r.clabe)}</td>`;
+      gb.appendChild(tr);
+    }
   }
 
   document.getElementById('results').classList.add('visible');
@@ -711,6 +773,102 @@ function downloadBanks() {
 }
 
 // ─────────────────────────────────────────────
+//  Generación GETULIO → XLSX (formato PEIBO)
+// ─────────────────────────────────────────────
+
+function downloadGetulio() {
+  const fechaElab     = document.getElementById('fechaElab').value || todayStr();
+  const fechaPago     = document.getElementById('fechaPago').value || todayStr();
+  const ref           = document.getElementById('referencia').value.trim();
+  const concepto      = document.getElementById('concepto').value.trim();
+  const clavePrograma = document.getElementById('clavePrograma').value.trim() || 'PAGO';
+
+  const data  = getulioBanksData;
+  const total = data.reduce((s, r) => s + r.monto, 0);
+
+  const PEIBO_HEADERS = [
+    'Clave Programa Dispersión',
+    'Nombre Programa',
+    "Fecha Elab ('AAAA-MM-DD)",
+    "Fecha Pago ('AAAA-MM-DD)",
+    'Uso Futuro',
+    'Uso Futuro',
+    'Importe Total del Programa',
+    'Clave Beneficiario en Peibo (Usar "sin definir" para nuevos)',
+    'Nombre del Beneficiario',
+    'Clave Banco (Ver "Directorio de Bancos")',
+    "Clabe (TDD o Celular)(usar ' antes de la clabe)",
+    'tipo cuenta',
+    'importe',
+    'Correo Beneficiario',
+    'Referencia',
+    'Concepto',
+    'Grupo',
+    'Id Referencia Cliente',
+    'RFC/CURP',
+    'Celular',
+  ];
+
+  const aoa = [];
+
+  // Row 1: headers
+  aoa.push(PEIBO_HEADERS);
+
+  // Row 2: program row
+  aoa.push([
+    clavePrograma, clavePrograma,
+    toDMY(fechaElab), toDMY(fechaPago),
+    '', '', fmtMXN(total),
+    '', '', '', '', '', '', '', '', '', '', '', '', ''
+  ]);
+
+  // Rows 3+: beneficiaries
+  for (const r of data) {
+    aoa.push([
+      clavePrograma, '', '', '', '', '', '',
+      'SIN DEFINIR',
+      r.nombre,
+      bankCode(r.clabe),
+      r.clabe,
+      'CLABE',
+      fmtMXN(r.monto),
+      '',        // Correo
+      ref,       // Referencia
+      concepto,  // Concepto
+      '', '', '', ''
+    ]);
+  }
+
+  // Blank rows + total
+  aoa.push(Array(20).fill(''));
+  aoa.push(Array(20).fill(''));
+  const totArr = Array(20).fill('');
+  totArr[12] = fmtMXN(total);
+  aoa.push(totArr);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Column widths (match PEIBO 20 cols)
+  ws['!cols'] = [
+    {wch:12},{wch:12},{wch:16},{wch:16},{wch:8},{wch:8},{wch:18},
+    {wch:14},{wch:38},{wch:10},{wch:20},{wch:10},{wch:14},
+    {wch:20},{wch:18},{wch:18},{wch:8},{wch:18},{wch:14},{wch:10}
+  ];
+
+  // Format importe column (col index 12) as text (already formatted as $X,XXX.XX string)
+  // Make CLABE column (index 10) text to prevent number conversion
+  const dataRowCount = data.length;
+  for (let i = 2; i <= dataRowCount + 1; i++) {
+    const clabeRef = XLSX.utils.encode_cell({ r: i, c: 10 });
+    if (ws[clabeRef]) ws[clabeRef].t = 's';
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'GETULIO');
+  XLSX.writeFile(wb, 'layout_GETULIO.xlsx');
+}
+
+// ─────────────────────────────────────────────
 //  Event wiring
 // ─────────────────────────────────────────────
 
@@ -723,7 +881,7 @@ function handleFile(file) {
   const errEl = document.getElementById('errorMsg');
   errEl.classList.remove('visible');
   document.getElementById('results').classList.remove('visible');
-  inntecData = []; banksData = []; mergedCount = 0;
+  inntecData = []; banksData = []; getulioBanksData = []; mergedCount = 0;
 
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -754,8 +912,9 @@ card.addEventListener('drop', e => {
 });
 
 // Download buttons
-document.getElementById('btnInntec').addEventListener('click', downloadInntec);
-document.getElementById('btnBanks').addEventListener('click',  downloadBanks);
+document.getElementById('btnInntec').addEventListener('click',   downloadInntec);
+document.getElementById('btnBanks').addEventListener('click',    downloadBanks);
+document.getElementById('btnGetulio').addEventListener('click',  downloadGetulio);
 
 // Filter notice — updates live as user types
 document.getElementById('filtroNombre').addEventListener('input', () => {
