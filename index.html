@@ -472,9 +472,11 @@ function parseExcel(ab) {
 
   if (headerIdx < 0) throw new Error('No se encontró fila de encabezados con NOMBRE y CLABE.');
 
-  const rawInntec    = {};
-  const rawBanksMap  = {};   // clabe → entry (for grouping)
-  const rawBanksArr  = [];   // insertion-order list (preserves Excel order)
+  const rawInntec     = {};
+  const rawBanksMap   = {};   // clabe → entry (for grouping, excludes Getulio)
+  const rawBanksArr   = [];   // insertion-order list (preserves Excel order)
+  const rawGetulioMap = {};   // Getulio-only entries
+  const rawGetulioArr = [];
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -500,6 +502,16 @@ function parseExcel(ab) {
       } else {
         rawInntec[clabe] = { nombre, clabe, monto, banco: 'INNTEC' };
       }
+    } else if (nombre.toUpperCase().includes('GETULIO')) {
+      // Getulio goes to his own dedicated layout — excluded from banks
+      if (rawGetulioMap[clabe]) {
+        rawGetulioMap[clabe].monto += monto;
+        mergedCount++;
+      } else {
+        const entry = { nombre, clabe, monto, banco };
+        rawGetulioMap[clabe] = entry;
+        rawGetulioArr.push(entry);
+      }
     } else {
       // Group banks by CLABE but PRESERVE original Excel row order
       if (rawBanksMap[clabe]) {
@@ -514,8 +526,8 @@ function parseExcel(ab) {
   }
 
   inntecData       = Object.values(rawInntec).sort((a, b) => a.nombre.localeCompare(b.nombre));
-  banksData        = rawBanksArr;   // NO sort — keeps the order from the Excel
-  getulioBanksData = banksData.filter(r => r.nombre.toUpperCase().includes('GETULIO'));
+  banksData        = rawBanksArr;     // NO sort — keeps the order from the Excel (Getulio excluded)
+  getulioBanksData = rawGetulioArr;   // Getulio only, separate from banks
 }
 
 // ─────────────────────────────────────────────
